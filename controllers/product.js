@@ -1,26 +1,25 @@
-const pool = require('../config'); // Pastikan file config.js sudah ada untuk koneksi database
+const pool = require('../config');
 const multer = require('multer');
 const path = require('path');
 
-// Setup multer untuk upload gambar
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Nama file unik dengan timestamp
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 const upload = multer({ storage });
 
 // Create Product
 const createProduct = async (req, res) => {
-  const { name, description, price, category } = req.body;
+  const { name, description, price, category, stock, size } = req.body;
   const image = req.file ? req.file.filename : null;
   try {
     const result = await pool.query(
-      'INSERT INTO product (name, image, description, price, category) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, image, description, price, category]
+      'INSERT INTO product (name, image, description, price, category, stock, size, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *',
+      [name, image, description, price, category, stock, size]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -28,10 +27,19 @@ const createProduct = async (req, res) => {
   }
 };
 
-// Get All Products
+// Get All Products with Search
 const getAllProducts = async (req, res) => {
+  const { search } = req.query;
   try {
-    const result = await pool.query('SELECT * FROM product');
+    let query = 'SELECT * FROM product ORDER BY updated_at DESC';
+    let values = [];
+    
+    if (search) {
+      query = 'SELECT * FROM product WHERE name ILIKE $1 ORDER BY updated_at DESC';
+      values = [`%${search}%`];
+    }
+    
+    const result = await pool.query(query, values);
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -55,12 +63,12 @@ const getProductById = async (req, res) => {
 // Update Product
 const updateProduct = async (req, res) => {
   const { id } = req.params;
-  const { name, description, price, category } = req.body;
-  const image = req.file ? req.file.filename : req.body.image; // Gunakan gambar lama jika tidak ada yang baru
+  const { name, description, price, category, stock, size } = req.body;
+  const image = req.file ? req.file.filename : req.body.image;
   try {
     const result = await pool.query(
-      'UPDATE product SET name = $1, image = $2, description = $3, price = $4, category = $5 WHERE id = $6 RETURNING *',
-      [name, image, description, price, category, id]
+      'UPDATE product SET name = $1, image = $2, description = $3, price = $4, category = $5, stock = $6, size = $7, updated_at = NOW() WHERE id = $8 RETURNING *',
+      [name, image, description, price, category, stock, size, id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Product not found' });
